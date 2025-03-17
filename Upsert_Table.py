@@ -1,5 +1,4 @@
 # upsert_table.py
-dbutils.fs.put("/FileStore/write_to_table.py", """
 from pyspark.sql import SparkSession
 import sys
 
