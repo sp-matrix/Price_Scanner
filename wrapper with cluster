@@ -1,78 +1,37 @@
+%sh
 #!/bin/bash
 
-# Databricks configuration (set these as job parameters or environment variables)
-DATABRICKS_HOST="https://<your-databricks-instance>"  # e.g., https://adb-1234567890123456.7.azuredatabricks.net
-DATABRICKS_TOKEN="<your-databricks-token>"           # Personal Access Token
-NEXT_JOB_ID="<next-job-id>"                          # Job ID of the next job to run
+# Step 1: Get the current cluster ID
+CLUSTER_ID=$(python -c 'from pyspark.sql import SparkSession; spark = SparkSession.builder.getOrCreate(); print(spark.conf.get("spark.databricks.clusterUsageTags.clusterId"))')
 
-# Step 1: Get the current run_id from the Databricks environment variable
-RUN_ID="$DATABRICKS_RUN_ID"
-
-if [ -z "$RUN_ID" ]; then
-  echo "Error: DATABRICKS_RUN_ID is not set. This script must run as a Databricks job."
-  exit 1
-fi
-
-echo "Current job run_id: $RUN_ID"
-
-# Step 2: Get the cluster_id of the current job run
-RUN_DETAILS=$(curl -s -X GET \
-  "$DATABRICKS_HOST/api/2.1/jobs/runs/get?run_id=$RUN_ID" \
-  -H "Authorization: Bearer $DATABRICKS_TOKEN")
-
-CLUSTER_ID=$(echo "$RUN_DETAILS" | jq -r '.cluster_instance.cluster_id')
-
+# Verify the cluster ID
 if [ -z "$CLUSTER_ID" ]; then
-  echo "Error: Could not retrieve cluster_id from run $RUN_ID"
-  echo "Response: $RUN_DETAILS"
+  echo "Error: Could not retrieve cluster ID"
   exit 1
 fi
 
-echo "Current job cluster_id: $CLUSTER_ID"
+echo "Current Cluster ID: $CLUSTER_ID"
 
-# Step 3: Update the next job to use the current job's cluster
-UPDATE_PAYLOAD=$(cat <<EOF
-{
-  "job_id": "$NEXT_JOB_ID",
-  "new_settings": {
-    "existing_cluster_id": "$CLUSTER_ID"
-  }
-}
-EOF
-)
+# Step 2: Define variables for the REST API call
+JOB_ID=123  # Replace with the target job ID
+TOKEN="dapiYourPersonalAccessToken"  # Replace with your PAT (use secrets in production)
+WORKSPACE_URL="https://your-databricks-instance.cloud.databricks.com"  # Replace with your workspace URL
 
-UPDATE_RESPONSE=$(curl -s -X POST \
-  "$DATABRICKS_HOST/api/2.1/jobs/update" \
-  -H "Authorization: Bearer $DATABRICKS_TOKEN" \
+# Step 3: Trigger the target job with the existing cluster ID
+RESPONSE=$(curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$UPDATE_PAYLOAD")
+  -d "{\"job_id\": $JOB_ID, \"existing_cluster_id\": \"$CLUSTER_ID\"}" \
+  "$WORKSPACE_URL/api/2.1/jobs/run-now")
 
-if [ "$(echo "$UPDATE_RESPONSE" | jq -r '.error_code')" != "null" ]; then
-  echo "Error updating job $NEXT_JOB_ID: $UPDATE_RESPONSE"
+# Check the response
+if echo "$RESPONSE" | grep -q "run_id"; then
+  RUN_ID=$(echo "$RESPONSE" | jq -r '.run_id')
+  echo "Successfully triggered job $JOB_ID on cluster $CLUSTER_ID with run ID $RUN_ID"
+else
+  echo "Failed to trigger job $JOB_ID. Response: $RESPONSE"
   exit 1
 fi
 
-echo "Successfully updated job $NEXT_JOB_ID to use cluster $CLUSTER_ID"
-
-# Step 4: Trigger the next job with run-now
-RUN_NOW_PAYLOAD=$(cat <<EOF
-{
-  "job_id": "$NEXT_JOB_ID"
-}
-EOF
-)
-
-RUN_NOW_RESPONSE=$(curl -s -X POST \
-  "$DATABRICKS_HOST/api/2.1/jobs/run-now" \
-  -H "Authorization: Bearer $DATABRICKS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$RUN_NOW_PAYLOAD")
-
-NEXT_RUN_ID=$(echo "$RUN_NOW_RESPONSE" | jq -r '.run_id')
-
-if [ -z "$NEXT_RUN_ID" ] || [ "$NEXT_RUN_ID" == "null" ]; then
-  echo "Error triggering job $NEXT_JOB_ID: $RUN_NOW_RESPONSE"
-  exit 1
-fi
-
-echo "Successfully triggered job $NEXT_JOB_ID. New run_id: $NEXT_RUN_ID"
+# Step 4: Keep the cluster alive briefly to ensure the target job starts
+sleep 60  # Adjust duration as needed
