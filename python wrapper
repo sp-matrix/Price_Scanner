@@ -1,0 +1,98 @@
+import requests
+import json
+from pyspark.sql import SparkSession
+
+# Databricks configuration
+DATABRICKS_HOST = "https://<your-databricks-instance>"  # Replace with your instance URL
+DATABRICKS_TOKEN = "<your-databricks-token>"           # Replace with your token
+TARGET_JOB_ID = "<target-job-id>"                      # Replace with the target job ID
+
+# Step 1: Get the current job cluster ID
+def get_current_cluster_id():
+    try:
+        spark = SparkSession.builder.getOrCreate()
+        cluster_id = spark.conf.get("spark.databricks.clusterUsageTags.clusterId")
+        print(f"Current Job Cluster ID: {cluster_id}")
+        return cluster_id
+    except Exception as e:
+        print(f"Error retrieving cluster ID: {e}")
+        return None
+
+# Step 2: Fetch the target job's current configuration
+def get_job_config(host, token, job_id):
+    url = f"{host}/api/2.0/jobs/get?job_id={job_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to fetch job config: {response.text}")
+        return None
+
+# Step 3: Update the target job to use the current cluster ID
+def update_job_cluster(host, token, job_id, cluster_id, current_config):
+    url = f"{host}/api/2.0/jobs/reset"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    # Preserve the task details (e.g., notebook_task) and update cluster
+    task_details = current_config["settings"].get("notebook_task", current_config["settings"].get("spark_python_task", {}))
+    payload = {
+        "job_id": job_id,
+        "new_settings": {
+            "name": current_config["settings"]["name"],
+            "existing_cluster_id": cluster_id,
+            "notebook_task": task_details  # Adjust if the job uses a different task type
+        }
+    }
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    if response.status_code == 200:
+        print(f"Target job updated to use cluster {cluster_id}")
+        return True
+    else:
+        print(f"Failed to update job: {response.text}")
+        return False
+
+# Step 4: Trigger the target job
+def trigger_job(host, token, job_id, params=None):
+    url = f"{host}/api/2.0/jobs/run-now"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {"job_id": job_id}
+    if params:
+        payload["notebook_params"] = params
+    
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    if response.status_code == 200:
+        run_id = response.json()["run_id"]
+        print(f"Target job triggered with Run ID: {run_id}")
+        return run_id
+    else:
+        print(f"Failed to trigger job: {response.text}")
+        return None
+
+# Main execution
+if __name__ == "__main__":
+    # Get the current cluster ID
+    CLUSTER_ID = get_current_cluster_id()
+    if not CLUSTER_ID:
+        print("Cannot proceed without cluster ID")
+        exit(1)
+
+    # Fetch the target job's current configuration
+    job_config = get_job_config(DATABRICKS_HOST, DATABRICKS_TOKEN, TARGET_JOB_ID)
+    if not job_config:
+        print("Cannot proceed without job config")
+        exit(1)
+
+    # Update the target job to use the current cluster
+    if not update_job_cluster(DATABRICKS_HOST, DATABRICKS_TOKEN, TARGET_JOB_ID, CLUSTER_ID, job_config):
+        print("Cannot proceed due to update failure")
+        exit(1)
+
+    # Trigger the target job with optional parameters
+    params = {"param1": "value1", "param2": "set1"}  # Example parameters
+    trigger_job(DATABRICKS_HOST, DATABRICKS_TOKEN, TARGET_JOB_ID, params)
