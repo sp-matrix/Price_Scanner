@@ -1,0 +1,66 @@
+import requests
+import json
+
+def trigger_job_with_parameters(token, databricks_host, job_id, parameters_list):
+    """
+    Trigger an existing Databricks job with a list of parameters
+    
+    Parameters:
+    - token: Databricks API token
+    - databricks_host: Databricks workspace URL (e.g., 'https://<region>.azuredatabricks.net')
+    - job_id: The ID of the existing job to trigger
+    - parameters_list: List of dictionaries containing 'report' and 'date' pairs
+    """
+    
+    # API endpoint for running a job
+    url = f"{databricks_host}/api/2.1/jobs/run-now"
+    
+    # Headers for authentication
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    # Construct the payload with parameters in JSON format
+    payload = {
+        "job_id": job_id,
+        "notebook_params": {
+            "parameters": parameters_list  # Pass the list as a single parameter
+        }
+    }
+    
+    try:
+        # Make the API request to trigger the job
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        run_info = response.json()
+        run_id = run_info["run_id"]
+        print(f"Job {job_id} triggered successfully. Run ID: {run_id}")
+        return run_id
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error triggering job: {str(e)}")
+        raise
+
+# Example usage
+if __name__ == "__main__":
+    # Configuration
+    DATABRICKS_TOKEN = "your-databricks-api-token"  # Use secret scope in practice
+    DATABRICKS_HOST = "https://your-databricks-workspace-url"
+    JOB_ID = 123  # Replace with your actual job ID
+    
+    # List of parameters with multiple rows
+    parameters_list = [
+        {"report": "sales", "date": "2025-03-01"},
+        {"report": "inventory", "date": "2025-03-02"},
+        {"report": "revenue", "date": "2025-03-03"}
+    ]
+    
+    # Trigger the job
+    run_id = trigger_job_with_parameters(
+        token=DATABRICKS_TOKEN,
+        databricks_host=DATABRICKS_HOST,
+        job_id=JOB_ID,
+        parameters_list=parameters_list
+    )
