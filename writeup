@@ -1,0 +1,31 @@
+Current Architecture
+
+In the existing setup, each report generation job in Databricks is executed on a separate job cluster. Every report is treated as an independent workflow, with its own cluster spun up to process the notebook and generate the output. Input parameters are passed individually to each job, and notifications are configured per report to alert stakeholders of completion or issues.
+
+Problem Statement
+
+While functional, this architecture presents several challenges:
+
+	•	High Costs: Spinning up a dedicated cluster for each report job increases compute resource consumption, driving up operational expenses.
+	•	Workflow Clutter: With each report running as a separate job, the Databricks workflow becomes overcrowded, making it harder to monitor, manage, and troubleshoot effectively.
+	•	Inefficient Resource Utilization: Individual clusters are underutilized, as they are terminated after a single report is generated, leading to redundant overhead in cluster startup and shutdown times.
+	•	Scalability Concerns: As the number of reports grows, the current model becomes increasingly unsustainable, amplifying both cost and complexity.
+
+Future Architecture
+
+The proposed solution, tentatively named ClusterBrickReporter, reimagines this process by consolidating report generation into a single job cluster. Key features include:
+
+	•	Single Job Cluster: All report-generating notebooks execute on one shared Databricks job cluster, eliminating the need for multiple clusters.
+	•	Parameterized Execution: Each notebook accepts its own unique input parameters, allowing flexibility for varied report requirements within the same cluster.
+	•	Per-Report Notifications: Independent notification settings are preserved for each report, ensuring stakeholders receive tailored alerts without workflow overlap.
+	•	Batch Processing: A wrapper orchestrates the execution of multiple notebooks sequentially or in parallel (as needed), optimizing cluster usage.
+
+Benefits
+
+This shift to a unified cluster architecture offers significant advantages:
+
+	•	Cost Efficiency: By reusing a single job cluster, compute costs are drastically reduced, as resources are allocated once and shared across all reports.
+	•	Simplified Workflow: Consolidating jobs into a single cluster reduces the number of workflows in Databricks, streamlining monitoring and maintenance.
+	•	Improved Resource Utilization: The shared cluster runs continuously for the batch of reports, minimizing idle time and startup/shutdown overhead.
+	•	Scalability: The architecture scales gracefully with additional reports, requiring only notebook additions rather than new clusters or workflows.
+	•	Faster Debugging: A centralized setup simplifies troubleshooting, as issues are confined to a single cluster rather than scattered across multiple jobs.
