@@ -1,0 +1,26 @@
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.DataFrame
+
+// Sample DataFrame (for illustration)
+val data = Seq(
+  (1, "Alice", "Math", 90, "Science", 85, "History", 88, "English", 92, "Geography", 87, "Physics", 91, "Chemistry", 89, "Biology", 86, "Art", 93, "Music", 94),
+  (2, "Bob", "Math", 78, "Science", 82, "History", 80, "English", 85, "Geography", 79, "Physics", 83, "Chemistry", 81, "Biology", 84, "Art", 87, "Music", 88)
+)
+val columns = Seq("id", "name") ++ (1 to 10).flatMap(i => Seq(s"subj_$i", s"mark_$i"))
+val df = spark.createDataFrame(data).toDF(columns: _*)
+
+// Step 1: Prepare the stack expression for transposing
+val stackExpr = (1 to 10).map(i => s"'subj_$i', subj_$i, 'mark_$i', mark_$i").mkString(", ")
+
+// Step 2: Use stack to transpose the DataFrame
+val transposedDF = df.selectExpr(
+  "id",
+  "name",
+  s"stack(10, $stackExpr) as (sub_col, sub, mark_col, mark)"
+)
+
+// Step 3: Select only the required columns
+val resultDF = transposedDF.select("id", "name", "sub", "mark")
+
+// Show the result
+resultDF.show()
