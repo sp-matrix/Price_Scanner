@@ -1,0 +1,157 @@
+import xmlschema
+from lxml import etree
+import random
+import re
+from datetime import datetime
+
+def generate_dummy_value(xsd_type, restrictions=None):
+    """
+    Generates a dummy value based on XSD type and restrictions.
+    
+    Args:
+        xsd_type: XSD type (e.g., xs:string, xs:integer)
+        restrictions: Dictionary of restrictions (e.g., pattern, enumeration)
+    
+    Returns:
+        A valid dummy value
+    """
+    restrictions = restrictions or {}
+
+    # Handle enumerations
+    if 'enumeration' in restrictions and restrictions['enumeration']:
+        return random.choice(restrictions['enumeration'])
+
+    # Handle patterns (e.g., EMP[0-9]{3})
+    if 'pattern' in restrictions:
+        pattern = restrictions['pattern']
+        if pattern == r'EMP[0-9]{3}':
+            return f"EMP{random.randint(0, 999):03d}"
+        # Add more pattern handling as needed
+        return "pattern_value"
+
+    # Handle min/max length for strings
+    if xsd_type == 'xs:string':
+        min_length = restrictions.get('minLength', 1)
+        max_length = restrictions.get('maxLength', 10)
+        length = random.randint(min_length, max_length)
+        return ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', k=length))
+
+    # Handle numeric types
+    if xsd_type == 'xs:integer':
+        min_val = restrictions.get('minInclusive', 0)
+        max_val = restrictions.get('maxInclusive', 1000)
+        return random.randint(min_val, max_val)
+    
+    if xsd_type == 'xs:decimal':
+        min_val = restrictions.get('minInclusive', 0.0)
+        max_val = restrictions.get('maxInclusive', 1000.0)
+        return round(random.uniform(min_val, max_val), 2)
+
+    # Default fallback
+    return "dummy_value"
+
+def extract_restrictions(xsd_type):
+    """
+    Extracts restrictions from an XSD type.
+    
+    Args:
+        xsd_type: XSD type object
+    
+    Returns:
+        Dictionary of restrictions
+    """
+    restrictions = {}
+    if hasattr(xsd_type, 'facets'):
+        for facet_name, facet in xsd_type.facets.items():
+            if facet_name == 'pattern':
+                restrictions['pattern'] = facet.pattern
+            elif facet_name == 'enumeration':
+                restrictions['enumeration'] = [str(e) for e in facet.enumeration]
+            elif facet_name == 'minInclusive':
+                restrictions['minInclusive'] = facet.value
+            elif facet_name == 'maxInclusive':
+                restrictions['maxInclusive'] = facet.value
+            elif facet_name == 'minLength':
+                restrictions['minLength'] = facet.value
+            elif facet_name == 'maxLength':
+                restrictions['maxLength'] = facet.value
+    return restrictions
+
+def generate_dummy_xml_element(xsd_element, parent_xml, schema):
+    """
+    Recursively generates XML elements based on XSD structure.
+    
+    Args:
+        xsd_element: XSD element object
+        parent_xml: Parent XML element (lxml.etree.Element)
+        schema: xmlschema.XMLSchema object
+    """
+    elem_name = xsd_element.name
+    if not elem_name:
+        return
+
+    # Determine occurrence constraints
+    min_occurs = xsd_element.min_occurs or 1
+    max_occurs = xsd_element.max_occurs or 1
+    if max_occurs == 'unbounded':
+        max_occurs = random.randint(min_occurs, min_occurs + 2)  # Limit for demo
+
+    # Generate the element the required number of times
+    for _ in range(random.randint(min_occurs, max_occurs)):
+        xml_elem = etree.SubElement(parent_xml, elem_name)
+
+        # Handle attributes
+        if hasattr(xsd_element, 'attributes'):
+            for attr_name, attr in xsd_element.attributes.items():
+                attr_type = attr.type
+                restrictions = extract_restrictions(attr_type)
+                xml_elem.set(attr_name, generate_dummy_value(attr_type.name, restrictions))
+
+        # Handle simple content
+        if xsd_element.type.is_simple() or xsd_element.type.has_simple_content():
+            restrictions = extract_restrictions(xsd_element.type)
+            xml_elem.text = str(generate_dummy_value(xsd_element.type.name, restrictions))
+        # Handle complex content
+        elif xsd_element.type.is_complex():
+            if hasattr(xsd_element.type, 'elements'):
+                for child_elem in xsd_element.type.elements.values():
+                    generate_dummy_xml_element(child_elem, xml_elem, schema)
+
+def generate_dummy_xml(xsd_path, output_xml_path):
+    """
+    Generates a dummy XML file based on an XSD schema.
+    
+    Args:
+        xsd_path: Path to the XSD file
+        output_xml_path: Path to save the generated XML
+    """
+    try:
+        # Load and parse the XSD
+        schema = xmlschema.XMLSchema(xsd_path)
+
+        # Create the root XML element
+        root_element = list(schema.elements.values())[0]  # Get the first root element
+        root_xml = etree.Element(root_element.name)
+
+        # Generate the XML structure
+        generate_dummy_xml_element(root_element, root_xml, schema)
+
+        # Save the XML to a file
+        tree = etree.ElementTree(root_xml)
+        tree.write(output_xml_path, pretty_print=True, encoding='UTF-8', xml_declaration=True)
+        print(f"Dummy XML generated and saved to {output_xml_path}")
+
+        # Validate the generated XML against the XSD
+        schema.validate(output_xml_path)
+        print("Generated XML is valid against the XSD.")
+
+    except Exception as e:
+        print(f"Error generating or validating XML: {str(e)}")
+
+# Example usage
+if __name__ == "__main__":
+    # Paths for XSD and output XML
+    xsd_file_path = "/dbfs/FileStore/complex_schema.xsd"
+    output_xml_path = "/dbfs/FileStore/dummy_output.xml"
+
+    generate_dummy_xml(xsd_file_path, output_xml_path)
