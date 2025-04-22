@@ -1,0 +1,24 @@
+from xmlschema import XMLSchema
+from xmlschema.fake import FakeGenerator
+
+def generate_sample_xml(xsd_file, output_file):
+    # Load schema
+    schema = XMLSchema(xsd_file)
+    
+    # Create fake generator
+    fake = FakeGenerator(schema)
+    
+    # Generate fake XML data
+    data = fake.generate()
+    
+    # Serialize to XML
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(data.toxml(pretty_print=True))
+    
+    return data
+
+# Example usage
+if __name__ == "__main__":
+    generated_data = generate_sample_xml('complex_schema.xsd', 'sample.xml')
+    print("Generated XML:")
+    print(generated_data.toxml(pretty_print=True))
