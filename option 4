@@ -1,0 +1,60 @@
+import xmlschema
+from lxml import etree
+
+# Load the XSD (XSD 1.1)
+xsd_path = 'your_schema.xsd'
+schema = xmlschema.XMLSchema10(xsd_path)
+
+# Get root element name and type (assuming first global element is root)
+root_name, root_obj = next(iter(schema.elements.items()))
+
+# Create example data
+example_data = schema.create_example(name=root_name)
+
+# Function to customize values
+def customize_data(data, schema_type):
+    if isinstance(data, dict):
+        for key, val in data.items():
+            child = schema_type.content_type.elements.get(key) if schema_type.is_complex() else None
+            if child:
+                data[key] = customize_data(val, child.type)
+    elif isinstance(data, list):
+        return [customize_data(item, schema_type) for item in data]
+    elif hasattr(schema_type, 'facets'):
+        if 'enumeration' in schema_type.facets:
+            return schema_type.facets['enumeration'][0].value
+        if 'pattern' in schema_type.facets:
+            return 'pattern_value'
+        if 'minLength' in schema_type.facets:
+            return 'x' * schema_type.facets['minLength'].value
+    return data
+
+customized_data = customize_data(example_data, root_obj.type)
+
+# Convert dict to XML
+def dict_to_etree(d, root_tag):
+    def _to_etree(elem, dct):
+        for key, val in dct.items():
+            if isinstance(val, dict):
+                child = etree.SubElement(elem, key)
+                _to_etree(child, val)
+            elif isinstance(val, list):
+                for item in val:
+                    child = etree.SubElement(elem, key)
+                    _to_etree(child, item)
+            else:
+                child = etree.SubElement(elem, key)
+                child.text = str(val)
+    root = etree.Element(root_tag)
+    _to_etree(root, d)
+    return root
+
+root_xml = dict_to_etree(customized_data, root_name)
+
+# Pretty print and validate
+xml_str = etree.tostring(root_xml, pretty_print=True, encoding='unicode')
+print(xml_str)
+
+# Validate XML
+schema.validate(etree.fromstring(xml_str))
+print("XML is valid against the XSD.")
