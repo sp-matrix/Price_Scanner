@@ -1,0 +1,33 @@
+from xmlschema import XMLSchema
+from xmlschema.dataobjects import DataElement
+import xml.etree.ElementTree as ET
+
+def generate_sample_xml(xsd_file, output_file):
+    # Load XSD schema
+    schema = XMLSchema(xsd_file)
+    
+    # Create a fake data generator
+    fake = schema.fake()
+    
+    # Generate fake XML data that complies with the schema
+    root_element = DataElement(schema.elements[0].name, schema=schema)
+    fake.generate(root_element)
+    
+    # Convert to XML element tree
+    xml_tree = root_element.to_etree()
+    
+    # Write to file
+    tree = ET.ElementTree(xml_tree)
+    tree.write(output_file, encoding='utf-8', xml_declaration=True)
+    
+    return xml_tree
+
+# Example usage
+if __name__ == "__main__":
+    xsd_path = "complex_schema.xsd"
+    output_path = "sample_data.xml"
+    
+    generated_xml = generate_sample_xml(xsd_path, output_path)
+    
+    print("Generated XML:")
+    print(ET.tostring(generated_xml, encoding='utf-8').decode())
